@@ -93,6 +93,12 @@ struct ma_task_wait {
     __u32 result_errno;   /* out: 0 or positive errno */
     __u64 reserved[2];
 };
+struct ma_task_reap {
+    __u32 context_handle;
+    __u32 reserved0;
+    __u64 task_sequence;
+    __u64 reserved[2];
+};
 struct ma_task_query {
     __u32 context_handle;
     __u32 state;          /* out: 0 queued, 4 running, or MA_TASK_* terminal */
@@ -118,6 +124,7 @@ struct ma_completion_record {
 #define MA_IOCTL_SUBMIT_TASK    _IOWR(MA_IOC_MAGIC, 0x05, struct ma_task_submit)
 #define MA_IOCTL_WAIT_TASK      _IOWR(MA_IOC_MAGIC, 0x06, struct ma_task_wait)
 #define MA_IOCTL_QUERY_TASK     _IOWR(MA_IOC_MAGIC, 0x07, struct ma_task_query)
+#define MA_IOCTL_REAP_TASK      _IOW (MA_IOC_MAGIC, 0x08, struct ma_task_reap)
 ```
 
 **版本规则**：`DEVICE_QUERY` 提供 ABI 版本；MVP 只支持 version 1，未来不兼容修改必须提升版本。所有数据字段均为显式 `__u32/__u64`，没有用户态裸指针、`size_t`、`long` 或 C++ 类型。兼容性测试至少验证 x86_64 下 `sizeof` 与 offsets；若实际布局存在隐式填充风险，Codex 必须给出 ABI 变更提案而非悄悄改字段。
@@ -137,6 +144,7 @@ struct ma_completion_record {
 | SUBMIT_TASK | 被 Kernel **接受入队**，返回 task_sequence | `-EINVAL`、`-ENOENT`、`-EAGAIN`、`-ESHUTDOWN` |
 | WAIT_TASK | 任务已终态，返回 state/result | `-EAGAIN`（0ms 未完成）、`-ETIMEDOUT`、`-ENOENT` |
 | QUERY_TASK | 返回当前状态 | `-ENOENT` |
+| REAP_TASK | 显式移除已终态 Job 的查询记录；Backend 消费结果后调用 | `-ENOENT`、`-EBUSY`（未终态） |
 | read | 返回完整 completion records | `-EAGAIN`、`-EFAULT`、`-EINVAL` |
 | poll | `EPOLLIN` 有完成记录、`EPOLLHUP/ERR` 已关闭/失败 | 标准 poll 语义 |
 
@@ -178,7 +186,7 @@ miniaccel_device
 - Context/Buffer Handle 仅在 Client 内可查；不能通过其他 fd 使用。
 - Context、Buffer、Job 都需要锁保护的状态和引用计数；跨调用不能信任用户送回的 Handle 以外状态。
 - Kernel Buffer 按分配的 Client + Context 归属。Buffer Handle 被 FREE 后立即不可再查，但已建立的 VMA/Job 引用仍能延长对象寿命。
-- Context Destroy 仅在 `in_flight=0` 且无活跃 Buffer Handle/映射引用时成功，否则 `-EBUSY`；由用户态 Context::close 先完成 drain/free。
+- Context Destroy 仅在 `in_flight=0` 且无活跃 Buffer Handle/映射引用时成功，否则 `-EBUSY`；由用户态 Context::close 先完成 drain/free。Context Closing 期间，已有 VMA 仍可以 munmap；不允许新 ALLOC_BUFFER 或 mmap。
 - Client Release 进入 closing，阻止新任务，取消未派发任务，安全等待正在运行的 ordered work，销毁表和未消费完成记录；无任何工作可在释放后访问 Client 内存。
 
 ## 6. Buffer 与 mmap 协议
@@ -236,7 +244,7 @@ SUBMIT_TASK
 - `SUBMIT_TASK` 成功表示已接受，不表示任务完成。
 - Context `max_inflight` 限制 Kernel 中被接受且尚未进入终态的 Job（排队 + 执行）；达到上限返回 `-EAGAIN`。
 - Device `max_queue_depth=256` 限制已接受但尚未终态的 Job 总数（包括运行中），不是可绕过的仅排队计数。
-- 默认每 Client 完成队列上限 1024 条；不得在完成队列满时丢失任务终态。采用完成记录与 Job Registry 保留策略（如完成后仍可 QUERY/WAIT）并报告 Completion FIFO Overflow 指标；MVP 必须提供确定的背压机制或可靠可消费日志，在压力测试中不能丢失完成。不能只简单覆盖旧记录。
+- 默认每 Client 完成队列上限 1024 条；**在 SUBMIT_TASK 准入时预留 1 个 Completion FIFO 槽位**，预留数与尚未 read 消费的记录数之和不得超过 1024，满时返回 `-EAGAIN` 且不创建 Job/Sequence。Job 终态时将其预留槽位转换成正式记录，`read` 消费后释放槽位；禁止覆盖/丢弃旧记录。取消或故障终态也必须生成记录。`REAP_TASK` 只回收 Job Registry 的终态查询记录，不清除尚未被 read 的完成记录。
 - Job 终态通过互斥/原子一次性转换，禁止重复入 FIFO、重复归还额度。
 - Kernel Device 可用有序 `workqueue` 或单 worker + FIFO 实现，保证易于复现。多 Context 公平性为 Scheduler M4 增强，不得声称 FIFO 已保证公平。
 - 对未开始的 Job 可在 Context/Client 关闭时标记 CANCELED；正在执行的 DELAY 必须安全结束后才能释放对象。
@@ -248,8 +256,8 @@ SUBMIT_TASK
 - `read(fd, out, N*sizeof(ma_completion_record))` 返回 1..N 个完整记录；`count < sizeof(record)` 或非整数倍返回 `-EINVAL`；无记录：O_NONBLOCK 返回 `-EAGAIN`，阻塞 fd 等待直到有记录或 Client 关闭。
 - `poll` 将 Client completion waitqueue 注册到 `poll_wait`；有记录时返回 `EPOLLIN|EPOLLRDNORM`，设备/Client 关闭时报告 HUP/ERR。
 - `WAIT_TASK` 基于 Job Registry 查询指定 context_handle + sequence，等待其成为终态。0ms 未完成返回 `-EAGAIN`，普通超时 `-ETIMEDOUT`；等待中收到信号 `-ERESTARTSYS`。
-- `read` 消费完成通知，但不得立即销毁任务状态：`QUERY_TASK/WAIT_TASK` 在 Context 存活期间仍可查终态，以防双消费者竞争。
-- Context 被正常 Destroy 后，其任务 ID 均变无效；为控制增长，Context 正常销毁前须按策略清理终态表。未消费完成记录的处理必须与 Close 协议一致。
+- `read` 消费完成通知后，`QUERY_TASK/WAIT_TASK` 仍能查询该 Job，直到用户显式调用 `REAP_TASK` 或 Context 销毁。每 Client 最多保留 65536 条尚未 REAP 的 Job 查询记录；超过上限的 SUBMIT_TASK 返回 `-ENOSPC`，不得无界增长。KernelDriverBackend 应在已将完成结果复制到 Runtime TaskRegistry 后执行 `REAP_TASK`；原生 UAPI 使用者可自行决定 REAP 时机。
+- Context 被正常 Destroy 后，其任务 ID 均变无效；Destroy 只允许无在途 Job 且 Buffer/映射引用已清空。剩余终态 Job 查询记录可在 Destroy 时统一清理；已经提交到该 Client 完成 FIFO 的记录仍可由 read 消费，且上下文 Handle 不得复用，因此不会发生身份歧义。Client release 则明确丢弃未消费通知并安全销毁。
 - Driver 只支持一个 KernelDriverBackend 的 completion reader；其他直接读 fd 的客户端应在自己的 fd 上使用。一个 fd 上多个并发 reader 的分配不保证广播，不得用于同一 Backend 的重复 dispatcher。
 
 ## 9. 模块初始化、卸载与锁
