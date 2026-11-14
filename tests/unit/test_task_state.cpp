@@ -5,6 +5,17 @@
 #include <atomic>
 using namespace miniaccel; using namespace miniaccel::internal;
 int main() {
+ TokenAllocator zero_context(0,1), zero_generation(1,0), zero_sequence(1,1,0);
+ for (auto* invalid : {&zero_context, &zero_generation, &zero_sequence}) {
+  for (int attempt=0; attempt<2; ++attempt) {
+   auto result=invalid->allocate();
+   CHECK(!result.ok()); CHECK(result.status().code==StatusCode::InvalidArgument);
+   bool rejected_value=false;
+   try { (void)result.value(); } catch (const std::bad_optional_access&) { rejected_value=true; }
+   CHECK(rejected_value);
+  }
+ }
+ TokenAllocator valid(1,1); CHECK(valid.allocate().value()==TaskToken({1,1,1}));
  TokenAllocator a(1,1,UINT64_MAX-1), b(2,1), c(1,2); CHECK(a.allocate().value().sequence == UINT64_MAX-1); CHECK(a.allocate().value().sequence == UINT64_MAX); CHECK(!a.allocate().ok()); CHECK(b.allocate().value() != TaskToken({1,1,1})); CHECK(c.allocate().value() != TaskToken({1,1,1}));
  TokenAllocator shared(8,1); std::vector<TaskToken> tokens(1000); std::vector<std::thread> allocators; for(int i=0;i<4;++i) allocators.emplace_back([&,i]{for(int j=0;j<250;++j) tokens[i*250+j]=shared.allocate().value();}); for(auto& t:allocators)t.join(); std::vector<bool> seen(1001); for(auto token:tokens) { CHECK(token.sequence>0 && token.sequence<=1000 && !seen[token.sequence]); seen[token.sequence]=true; }
  // Exercise every pair of states, including every illegal transition.

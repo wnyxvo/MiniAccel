@@ -4,7 +4,7 @@
 namespace miniaccel::internal {
 Result<TaskToken> TokenAllocator::allocate() {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!context_ || !next_) return Status{StatusCode::InvalidArgument, "invalid or exhausted token allocator"};
+    if (!context_ || !generation_ || !next_) return Status{StatusCode::InvalidArgument, "invalid or exhausted token allocator"};
     const TaskToken token{context_, generation_, next_};
     next_ = next_ == UINT64_MAX ? 0 : next_ + 1;
     return token;
