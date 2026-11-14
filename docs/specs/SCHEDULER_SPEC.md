@@ -28,7 +28,7 @@ MVP 采用非抢占式调度，CPU Worker 数可配置；Kernel 单执行通道�
 | `kernel_device_capacity` | 256 | 全设备已接受未终态 Kernel Job |
 | `cpu_worker_count` | min(4,hardware_concurrency)，至少1 | CPU 并行执行通道 |
 | `kernel_max_delay_ms` | 1000 | 单个 DELAY 的模拟执行上限 |
-| `completion_fifo_records` | 1024 / Client | 完成记录缓存容量（不可静默丢完成） |
+| `completion_fifo_records` | 1024 / Client | 完成 FIFO 现存记录 + 已预留槽位之和；每个成功提交 Kernel Job 先预留 1 个、read 消费归还 |
 | `dispatch_retry_wait_ms` | 10 | `QueueFull` 重试等待上限/次；不得忙轮询 |
 
 可通过 ContextConfig/driver module 参数改变经允许的配置；全部整数范围必须校验，零值除专门定义的非阻塞 timeout 外一律拒绝。Benchmark 必须记录实际参数。
@@ -133,13 +133,13 @@ scheduler_loop:
 **接受点划分**：
 - Runtime 接受：TaskToken 创建，pending_count++，调用方获得 Task。
 - Backend 接受：Backend 为任务创建 BackendTaskId 并承担完成报告义务，进入 SUBMITTED。
-- Kernel 接受：`MA_IOCTL_SUBMIT_TASK` 成功返回 `task_sequence`，Job 入队；IOCTL 的 `-EAGAIN` 未接受，不产生序列号/完成。
+- Kernel 接受：`MA_IOCTL_SUBMIT_TASK` 成功返回 `task_sequence`，Job 入队；IOCTL 的 `-EAGAIN` 未接受，不产生序列号/完成。准入时还必须取得一个 Completion FIFO 预留槽位，完成后转换为记录，read 消费时释放，确保不静默丢失通知。
 - Completion：Backend Completion 返回终态，Runtime 以 BackendTaskId 定位 Task，再应用唯一终态转换。
 
 不变量：
 1. Backend 完成信息不能在 TaskRegistry 尚未建立时被丢弃。
 2. Runtime 可以暂存早到的 BackendCompletion，待 BackendTaskId 映射建立后立即应用；未知 ID 必须记录并使 Backend 进入故障流程，不能忽略。
-3. 不得把 Kernel Job 的队列/运行状态映射为 Runtime Task 已完成。
+3. 不得把 Kernel Job 的队列/运行状态映射为 Runtime Task 已完成。Kernel 终态查询记录通过 `MA_IOCTL_REAP_TASK` 显式回收；KernelDriverBackend 消费完成并安全写入 Runtime TaskRegistry 后负责 REAP；原生 UAPI 用户自行决定回收时机。
 4. 完成必须最终唤醒 Task.wait、Event.wait、Stream/Context.synchronize 以及 Scheduler Capacity Waiter。
 5. CompletionDispatcher 不得持有全局锁时调用用户回调；MVP 不提供自定义完成回调 API。
 
