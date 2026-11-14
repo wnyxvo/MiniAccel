@@ -1,6 +1,6 @@
 # MiniAccel 正式设计文档索引
 
-版本：v1.0｜状态：**正式基线**｜语言：中文
+版本：v1.0.1（门禁归属裁决补丁；架构/Runtime/Driver/Scheduler 正文仍为 v1.0）｜状态：**正式基线**｜语言：中文
 
 本目录是 MiniAccel 运行时与 Linux Driver 原型的规范性设计依据。开发、重构、测试和代码审查均应按本文档索引阅读五份规范。上游源码研究保存在 [docs/research](../research/README.md)，不直接构成实现要求。
 
@@ -50,6 +50,22 @@
 | M5 | Benchmark、结果归档、文档和面试素材 | G5 |
 
 M0 之前不应先实现完整 DRM_ACCEL 或 Firmware。每个 Gate 的测试编号和验收标准见 TEST_AND_BENCHMARK。
+
+### 4.1 门禁裁决 DEC-G0-001（2026-11-14）
+
+**冲突来源**：原 `TEST_AND_BENCHMARK.md` §4 的 UT-010 要求 Runtime 无效提交“不创建 Task、不消耗 Sequence / 配额”，但本索引 §4 将 `Stream::submit`、Runtime TaskRegistry 与完整准入事务归入 M3。M0 的 `TokenAllocator` 与 `CpuBackend` 无法独立证明 Runtime 级事务正确。
+
+**正式裁决（随本变更 PR 合并后生效）**：
+
+| 范围 | 测试归属 | 不可删减的验收义务 |
+|---|---|---|
+| M0 / G0 | UT-001～UT-010；UT-010 明确为 Backend 无效提交的同步拒绝、BackendTaskId/额度/Completion 保全 | C++17 构建、M0 基础测试及适用的 Sanitizer 验证；不得宣称 Runtime 全局身份或 `Stream::submit` 已实现 |
+| M3 / G3 | 新增强制 RT-13：Runtime 全局身份与提交准入原子性；原 RT-01～RT-12 保留 | 全局 Context ID 单调唯一、TaskToken 正确分配、Runtime 拒绝不创建任务且不耗 Sequence/pending 额度、已接受任务在 Backend 背压后身份不变 |
+| M4 / G4 | 保留 ST-004 和其余并发/背压测试 | 对 M3 原子性保证进行高并发、容量与故障路径压力验证 |
+
+**边界与证据规则**：原 UT-010 的 Runtime 级正确性要求是**移交到 RT-13，不是删除或降级为可选项**；`RUNTIME_SPEC.md` §4 与 `SCHEDULER_SPEC.md` 的身份、提交、配额和唯一终态不变量保持不变。BackendTaskId 不等于 Runtime TaskToken；M0 通过不能作为 M3 完成证明。阶段门禁只有在本裁决合并成为正式基线且相应代码/测试证据核实后才能标记 PASS；修改文档本身不意味着 G0 自动通过。
+
+**版本与影响**：本索引和 `TEST_AND_BENCHMARK.md` 更新为 v1.0.1；`ARCHITECTURE.md`、`RUNTIME_SPEC.md`、`DRIVER_SPEC.md`、`SCHEDULER_SPEC.md` 保持 v1.0。未更改公共 C++ API、Driver UAPI、执行协议、资源所有权或最终测试总要求。
 
 ## 5. 变更治理
 
