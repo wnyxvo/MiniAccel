@@ -43,9 +43,11 @@ driver/miniaccel_internal.h # 内部结构体与锁规则
 #define MA_CAP_DELAY (1ULL << 1)
 #define MA_OP_NOP    1u
 #define MA_OP_DELAY  2u
+#define MA_TASK_QUEUED    0u
 #define MA_TASK_COMPLETED 1u
 #define MA_TASK_FAILED    2u
 #define MA_TASK_CANCELED  3u
+#define MA_TASK_RUNNING   4u
 
 struct ma_device_query {
     __u32 abi_version;          /* out */
@@ -187,7 +189,7 @@ miniaccel_device
 - Context、Buffer、Job 都需要锁保护的状态和引用计数；跨调用不能信任用户送回的 Handle 以外状态。
 - Kernel Buffer 按分配的 Client + Context 归属。Buffer Handle 被 FREE 后立即不可再查，但已建立的 VMA/Job 引用仍能延长对象寿命。
 - Context Destroy 仅在 `in_flight=0` 且无活跃 Buffer Handle/映射引用时成功，否则 `-EBUSY`；由用户态 Context::close 先完成 drain/free。Context Closing 期间，已有 VMA 仍可以 munmap；不允许新 ALLOC_BUFFER 或 mmap。
-- Client Release 进入 closing，阻止新任务，取消未派发任务，安全等待正在运行的 ordered work，销毁表和未消费完成记录；无任何工作可在释放后访问 Client 内存。
+- Client Release 进入 closing，阻止新任务，取消未派发任务，安全等待正在运行的 ordered work，销毁表和未消费完成记录；无任何工作可在释放后访问 Client 内存。**仍存活的 mmap VMA 必须独立持有 Buffer 所需引用；fd close 不得提前销毁其映射内存。**
 
 ## 6. Buffer 与 mmap 协议
 
@@ -246,7 +248,7 @@ SUBMIT_TASK
 - Device `max_queue_depth=256` 限制已接受但尚未终态的 Job 总数（包括运行中），不是可绕过的仅排队计数。
 - 默认每 Client 完成队列上限 1024 条；**在 SUBMIT_TASK 准入时预留 1 个 Completion FIFO 槽位**，预留数与尚未 read 消费的记录数之和不得超过 1024，满时返回 `-EAGAIN` 且不创建 Job/Sequence。Job 终态时将其预留槽位转换成正式记录，`read` 消费后释放槽位；禁止覆盖/丢弃旧记录。取消或故障终态也必须生成记录。`REAP_TASK` 只回收 Job Registry 的终态查询记录，不清除尚未被 read 的完成记录。
 - Job 终态通过互斥/原子一次性转换，禁止重复入 FIFO、重复归还额度。
-- Kernel Device 可用有序 `workqueue` 或单 worker + FIFO 实现，保证易于复现。多 Context 公平性为 Scheduler M4 增强，不得声称 FIFO 已保证公平。
+- Kernel Device 可用有序 `workqueue` 或单 worker + FIFO 实现，保证易于复现。多 Context 公平性为 Scheduler M4 增强，不得声称 FIFO 已保证公平。**为防止提交后错误回滚，所有准入校验和 Completion 槽位预留必须先成功，再分配序号并使 Job 对其他线程可见；任何失败路径须完整释放临时资源和预留额度。**
 - 对未开始的 Job 可在 Context/Client 关闭时标记 CANCELED；正在执行的 DELAY 必须安全结束后才能释放对象。
 - 可使用 `delayed_work` 或等待方式实现 DELAY，但不能长时间占用自旋锁或在 atomic context 睡眠。
 - 所有 Job completion 的 timestamp 用 `ktime_get_ns()`。
