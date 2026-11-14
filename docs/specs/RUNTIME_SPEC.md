@@ -37,7 +37,9 @@ struct TaskToken {
     uint64_t context_id{};
     uint32_t generation{};
     uint64_t sequence{};
-    bool operator==(const TaskToken& rhs) const noexcept {\n        return context_id == rhs.context_id && generation == rhs.generation && sequence == rhs.sequence;\n    }
+    bool operator==(const TaskToken& rhs) const noexcept {
+        return context_id == rhs.context_id && generation == rhs.generation && sequence == rhs.sequence;
+    }
 };
 struct DeviceInfo {
     uint32_t ordinal{};
