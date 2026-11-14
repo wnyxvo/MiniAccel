@@ -1,6 +1,6 @@
 # MiniAccel 测试与性能评估规范
 
-> 文档编号：SPEC-TEST-001　版本：v1.0　状态：**正式基线**  
+> 文档编号：SPEC-TEST-001　版本：v1.0.1　状态：**正式基线**  
 > 依赖：[ARCHITECTURE.md](./ARCHITECTURE.md) · [RUNTIME_SPEC.md](./RUNTIME_SPEC.md) · [DRIVER_SPEC.md](./DRIVER_SPEC.md) · [SCHEDULER_SPEC.md](./SCHEDULER_SPEC.md)  
 > 说明：本文件定义**必须实现的测试与验收口径**；文中命令是 Codex 完成构建系统后应能执行的接口，不表示目前已有代码或测试结果。
 
@@ -97,9 +97,11 @@ scripts/
 | UT-007 | CPU FILL | 各字节等于填充值，边界检查 |
 | UT-008 | CPU COPY | 正确复制与指定重叠时 memmove 语义 |
 | UT-009 | CPU VECTOR_ADD | 结果与参考数组比较，误差符合 §10 |
-| UT-010 | 无效参数 | 不创建 Task、不消耗 Sequence / 配额 |
+| UT-010 | Backend 无效提交与准入拒绝 | 不支持 Opcode、非法/跨 Context Handle、越界和容量不足均同步拒绝；不接受 Backend Task、不分配 BackendTaskId、不消耗 Backend inflight/Completion 槽位；输出 ID 不被改写，后续合法提交仍可成功 |
 
-M0 要求 `ctest` 全通过。TSan/ASan/UBSan 按工具支持分别构建，不能同时开启互不兼容的 Sanitizer。
+**DEC-G0-001 阶段裁决（2026-11-14）**：UT-002 仅验证给定 Context ID、generation 的 `TokenAllocator` 身份构造、零值拒绝、唯一性及溢出；UT-010 仅验证 Backend 层的同步拒绝和资源/ID 不被消耗。二者**不得代替**完整 Runtime 全局 Context ID 分配、`Stream::submit` 的 Sequence/TaskRegistry/pending 配额原子准入。这些原 UT-010 Runtime 级义务完整转移到 M3 的强制测试 RT-13，并在 M4 由 ST-004 加压复核；此裁决不改变 `RUNTIME_SPEC.md` §4 或 `SCHEDULER_SPEC.md` 的不变量。
+
+M0 要求 `ctest` 全通过。TSan/ASan/UBSan 按工具支持分别构建，不能同时开启互不兼容的 Sanitizer。G0 的 PASS 只代表 M0 基础能力，必须报告适用测试的真实运行结果和环境限制，不得声称 M3 Runtime E2E 已完成。
 
 ## 5. M1～M2：Kernel Driver 功能和安全测试
 
@@ -146,6 +148,9 @@ M0 要求 `ctest` 全通过。TSan/ASan/UBSan 按工具支持分别构建，不�
 | RT-10 | 早到 Completion | 10000 次快速 NOP 无 lost/duplicate |
 | RT-11 | 错 Context Buffer/Event | WrongContext 同步拒绝 |
 | RT-12 | Kernel 不支持计算 Opcode | Unsupported，禁止静默 CPU fallback |
+| RT-13 | Runtime 全局身份与提交准入原子性 | Runtime 生命周期内 Context ID 单调、唯一且不复用；合法接受 TaskToken 的 generation/sequence 非零、sequence 单调且无因同步拒绝造成的缺口；非法参数、无效/跨 Context 对象、不支持 Opcode 或 Runtime pending QueueFull 均同步拒绝，不创建 Task/TaskRegistry 条目、不消耗 Sequence/配额；成功接受只登记一次；后续 Backend QueueFull 重试沿用原 TaskToken，最终终态和配额准确 |
+
+**RT-13 强制场景**：至少包含多 Context 创建/关闭与身份非复用、同一 Stream 和不同 Stream 并发提交、非法命令/错误归属/越界/不支持命令、`max_pending_tasks` 满、同步拒绝后合法提交的 Sequence 连续性，以及已接受任务遭遇 Backend `QueueFull` 后保持原 Token/Registry 记录。检查失败路径无隐藏 Task、配额泄漏、重复分配或双终态；M4 的 ST-004 再执行高压矩阵。RT-13 仅在 M3 的完整 Runtime API、TaskRegistry 和 Scheduler 实现后验收，M0 的 BackendTaskId 测试不计作其通过。
 
 E2E 不应因为 Kernel 没有 VECTOR_ADD 而跳过 Capabilities 验证；必须明确证明 Kernel 返回 Unsupported 且 CPU 计算正确。
 
@@ -259,10 +264,10 @@ CSV 至少包含：run_id、backend、opcode、context_count、stream_count、pr
 
 | Gate | 前提 | 通过标准 |
 |---|---|---|
-| G0 | M0 用户态基础 | C++17 编译、UT 全通过、Sanitizer 可运行 |
+| G0 | M0 用户态基础 | C++17 编译、UT-001～UT-010 全通过、Sanitizer 可运行；UT-010 限定为 Backend 准入，须附实际测试证据 |
 | G1 | M1 Kernel 基础 | 驱动 load/open/query/close/unload，KT-001/010 |
 | G2 | M2 资源与任务 | KT-002～017，驱动高压/资源回收 |
-| G3 | M3 双 Backend | RT-01～12，能力差异透明 |
+| G3 | M3 双 Backend | RT-01～13 全通过，能力差异透明；其中 RT-13 强制验证 Runtime 全局身份与原子准入 |
 | G4 | M4 调度可靠性 | ST-001～12，正确关闭/背压/依赖 |
 | G5 | M5 性能与材料 | BM-01～07 数据、日志、分析可复现 |
 
