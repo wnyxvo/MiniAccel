@@ -37,7 +37,7 @@ struct TaskToken {
     uint64_t context_id{};
     uint32_t generation{};
     uint64_t sequence{};
-    bool operator==(const TaskToken&) const noexcept = default; // C++17 实现时显式定义
+    bool operator==(const TaskToken& rhs) const noexcept {\n        return context_id == rhs.context_id && generation == rhs.generation && sequence == rhs.sequence;\n    }
 };
 struct DeviceInfo {
     uint32_t ordinal{};
@@ -111,7 +111,7 @@ public:
 } // namespace miniaccel
 ```
 
-**C++17 注意**：示例 `operator== = default` 是意图展示，C++17 实现必须显式定义 `operator==`（不可引入 C++20 特性）。`Result<T>`、`Result<void*>` 实现应统一错误传递；`Status` 为显式错误值，不以异常作为正常控制流。对象析构函数必须 noexcept。
+**C++17 注意**：以上签名以 C++17 为准，不得引入 C++20 默认比较运算符或其他仅 C++20 支持的特性。`Result<T>`、`Result<void*>` 实现应统一错误传递；`Status` 为显式错误值，不以异常作为正常控制流。对象析构函数必须 noexcept。
 
 ## 3. 创建、所有权与关闭
 
@@ -119,7 +119,7 @@ public:
 - Device 所属 Backend 由 Runtime 唯一管理。MVP 每种 Backend 暴露一个逻辑 Device；CPU 总能发现，Kernel Driver 缺失时不返回对应 Device。
 - Context 只属于一个 Device，创建时获得新的全局 Context ID；对应一个 Backend Context；一个 Context 可拥有多个 Stream/Event/Buffer。
 - `shared_ptr` 对象句柄不等于资源所有权：Context 内维护 Resource Registry，关闭后旧 Stream/Event/Buffer 方法必须返回 Closed；Task 保活 Backend 资源直至终态。
-- Context::close() 同步：标记 Closing → 禁新建/新提交 → 取消未派发任务 → 等待所有已接受任务安全终态 → 删除 Backend Context → Closed。正常 DELAY 最大 1000ms；Backend 永久失联时不允许以假完成释放资源，返回 BackendUnavailable，保留保护引用。
+- Context::close() 同步：标记 Closing → 禁新建/新提交 → 取消未派发任务 → 等待所有已接受任务安全终态 → 释放不再被映射的 Buffer → 删除 Backend Context → Closed。若仍有由调用方持有的 Buffer mmap 映射，返回 Busy，保持 Closing 并允许其调用 `Buffer::unmap()`；用户解除映射后可重试 close。正常 DELAY 最大 1000ms；Backend 永久失联时不允许以假完成释放资源，返回 BackendUnavailable，保留保护引用。
 - Stream::close() 同理，只作用该 Stream，不能破坏同 Context 其他 Stream。
 - `Context::synchronize(timeout)` 仅等待调用瞬间已经提交的任务快照；运行期间后续提交任务不属于本次等待集。
 - `Stream::synchronize(timeout)` 等待调用瞬间尾任务终态；若此前任务失败，返回其可追踪的首个错误而非成功。
@@ -195,7 +195,7 @@ public:
 ## 8. Buffer、MemoryPool 与映射
 
 - Buffer 对象记录 size、alignment、所属 Context、Backend Handle、映射引用计数、任务引用；不要公开所谓“device physical address”。
-- `map()` 返回 Host 可访问范围；同一 Buffer 重复 map 计数；`unmap()` 配对；不允许 Buffer 越界。
+- `map()` 返回 Host 可访问范围；同一 Buffer 重复 map 计数；`unmap()` 配对；不允许 Buffer 越界。Buffer 所属 Context 为 Closing 时禁止新 map，但**允许已有映射执行 unmap** 以完成安全关闭。
 - KernelBackend 从 Driver ALLOC_BUFFER 获取 `mmap_offset`，用 `mmap(fd,...,offset)` 创建映射；`munmap` 仅解除映射，是否释放内核内存取决于 Handle/Job/VMA 引用。
 - Context MemoryPool 先按 size/alignment 分桶复用已不被任务访问的 Buffer；MVP 默认关闭池化，M4 开启并提供 `trim()`，测试需对照池化前后分配延迟。
 - `syncToDevice/syncFromDevice`：CPU Backend 为无动作；Kernel 软件共享内存路径为 no-op，不得宣称进行 DMA 传输或设备缓存同步。
@@ -226,7 +226,7 @@ public:
 | IOCTL/映射系统调用失败 | IoError（附 errno） |
 | Buffer 分配失败 | OutOfMemory |
 
-关闭协议：对象一旦 Closing 就不再接受新操作；正常 Close 等待并清理后返回 Ok；如果 Backend 无法确认工作停止，返回 BackendUnavailable，并保持安全所需的资源引用，不得返回 Ok 伪装完全回收。
+关闭协议：对象一旦 Closing 就不再接受新提交/新资源申请；已有映射的 unmap、已接受任务的 wait/query 和 Close 重试仍允许。正常 Close 排空和清理后返回 Ok；若仍有映射返回 Busy；若 Backend 无法确认工作停止返回 BackendUnavailable，并保持安全所需的资源引用，不得返回 Ok 伪装完全回收。
 
 ## 11. 实现阶段与验收
 
