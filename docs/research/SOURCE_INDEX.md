@@ -68,7 +68,7 @@
 - [xrt_device.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/common/api/xrt_device.cpp)
 - [xrt_hw_context.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/common/api/xrt_hw_context.cpp)
 - [xrt_bo.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/common/api/xrt_bo.cpp)
-- [hw_queue.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372def1d372e17a8e69c05d2/src/runtime_src/core/common/api/hw_queue.cpp)
+- [hw_queue.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/common/api/hw_queue.cpp)
 - [xrt_kernel.cpp](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/common/api/xrt_kernel.cpp)
 - [xocl_ioctl.c](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/pcie/driver/linux/xocl/userpf/xocl_ioctl.c)
 - [xocl_kds.c](https://github.com/Xilinx/XRT/blob/06c43a7f93fee129d32def1d372e17a8e69c05d2/src/runtime_src/core/pcie/driver/linux/xocl/userpf/xocl_kds.c)
