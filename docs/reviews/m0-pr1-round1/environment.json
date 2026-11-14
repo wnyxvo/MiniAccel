@@ -1,0 +1,16 @@
+{
+  "tested_commit": "a97cc9612237d64940182b0dc6ff7e7429be8217",
+  "spec": "v1.0",
+  "os": "Ubuntu 24.04.4 LTS",
+  "kernel": "7.0.0-43-generic",
+  "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "cmake": "cmake version 3.28.3",
+  "cpu": "13th Gen Intel(R) Core(TM) i9-13900HX",
+  "logical_cpus": 16,
+  "vm_memory_gib": "unknown (VM/container status not independently verified)",
+  "backend": "CPU software",
+  "worker_count": "test-dependent: 1, 2, 4 and default",
+  "queue_capacity": "test-dependent",
+  "max_inflight": "test-dependent",
+  "kernel_vm_tests": "not applicable to M0"
+}
