@@ -1,0 +1,40 @@
+name: M1 D0 build and UAPI validation
+on:
+  push:
+    branches: [codex/m1-character-driver-d0]
+  pull_request:
+    paths:
+      - 'uapi/**'
+      - 'driver/**'
+      - 'tests/driver/**'
+      - '.github/workflows/m1-d0.yml'
+
+jobs:
+  uapi-c-cpp:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile C11 ABI assertions and smoke binary
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Iuapi tests/driver/test_uapi_abi.c -o /tmp/ma-abi-c
+          cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -Iuapi tests/driver/kt001_kt010_query.c -o /tmp/ma-query
+          /tmp/ma-abi-c
+      - name: Compile C++17 ABI assertions
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -Iuapi tests/driver/test_uapi_abi.cpp -o /tmp/ma-abi-cpp
+          /tmp/ma-abi-cpp
+  kernel-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packaged kernel headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-headers-generic
+      - name: Build module against installed headers (no module loading)
+        run: |
+          set -eu
+          KDIR="$(find /usr/src -maxdepth 1 -type d -name 'linux-headers-*-generic' | sort -V | tail -n 1)"
+          test -n "$KDIR"
+          echo "Headers: $KDIR"
+          make -C "$KDIR" M="$PWD/driver" modules
