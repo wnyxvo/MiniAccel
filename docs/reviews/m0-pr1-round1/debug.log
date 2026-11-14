@@ -1,0 +1,64 @@
+$ cmake -S . -B build/review-debug -DCMAKE_BUILD_TYPE=Debug
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Configuring done (1.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/w/MiniAccel/build/review-debug
+exit code: 0
+
+$ cmake --build build/review-debug -j4
+[  7%] Building CXX object CMakeFiles/miniaccel.dir/src/core/task_state.cpp.o
+[ 21%] Building CXX object CMakeFiles/miniaccel.dir/src/core/thread_pool.cpp.o
+[ 14%] Building CXX object CMakeFiles/miniaccel.dir/src/backends/cpu/cpu_backend.cpp.o
+[ 28%] Linking CXX static library libminiaccel.a
+[ 28%] Built target miniaccel
+[ 42%] Building CXX object CMakeFiles/test_status.dir/tests/unit/test_status.cpp.o
+[ 42%] Building CXX object CMakeFiles/test_bounded_queue.dir/tests/unit/test_bounded_queue.cpp.o
+[ 50%] Building CXX object CMakeFiles/test_task_state.dir/tests/unit/test_task_state.cpp.o
+[ 57%] Building CXX object CMakeFiles/test_thread_pool.dir/tests/unit/test_thread_pool.cpp.o
+[ 64%] Linking CXX executable test_status
+[ 64%] Built target test_status
+[ 71%] Building CXX object CMakeFiles/test_cpu_backend.dir/tests/integration/test_cpu_backend.cpp.o
+[ 78%] Linking CXX executable test_bounded_queue
+[ 85%] Linking CXX executable test_task_state
+[ 85%] Built target test_bounded_queue
+[ 85%] Built target test_task_state
+[ 92%] Linking CXX executable test_thread_pool
+[ 92%] Built target test_thread_pool
+[100%] Linking CXX executable test_cpu_backend
+[100%] Built target test_cpu_backend
+exit code: 0
+
+$ ctest --test-dir build/review-debug --output-on-failure --output-junit /home/w/MiniAccel/docs/reviews/m0-pr1-round1/debug.xml
+Internal ctest changing into directory: /home/w/MiniAccel/build/review-debug
+Test project /home/w/MiniAccel/build/review-debug
+    Start 1: status
+1/9 Test #1: status ...........................   Passed    0.02 sec
+    Start 2: task_state
+2/9 Test #2: task_state .......................   Passed    0.03 sec
+    Start 3: bounded_queue
+3/9 Test #3: bounded_queue ....................   Passed    0.19 sec
+    Start 4: thread_pool
+4/9 Test #4: thread_pool ......................   Passed    0.30 sec
+    Start 5: UT-006
+5/9 Test #5: UT-006 ...........................   Passed    1.02 sec
+    Start 6: UT-007
+6/9 Test #6: UT-007 ...........................   Passed    0.02 sec
+    Start 7: UT-008
+7/9 Test #7: UT-008 ...........................   Passed    0.02 sec
+    Start 8: UT-009
+8/9 Test #8: UT-009 ...........................   Passed    0.02 sec
+    Start 9: UT-010
+9/9 Test #9: UT-010 ...........................   Passed    1.15 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Total Test time (real) =   2.75 sec
+exit code: 0
