@@ -10,11 +10,19 @@ int main() {
   ThreadPool p(2,256); std::atomic<int> failures{0}, done{0};
   CHECK(p.submit({[]{throw std::runtime_error("failure");},[&](Status s){CHECK(s.code==StatusCode::InternalError);++failures;}}).ok());
   for(int i=0;i<100;++i) CHECK(p.submit({[&]{++done;},[&](Status){std::abort();}}).ok());
-  std::thread t([&]{p.shutdown();}); p.shutdown(); t.join(); CHECK(done==100 && failures==1); CHECK(p.submit({[]{},[](Status){}}).code==StatusCode::Closed);
+  std::thread t([&]{p.shutdown();}); p.shutdown(); t.join(); CHECK(done==100 && failures==1); CHECK(p.failureCallbackErrors()==0); CHECK(p.submit({[]{},[](Status){}}).code==StatusCode::Closed);
  }
  for(int round=0;round<50;++round) {
   ThreadPool p(4,32); std::atomic<int> accepted{0},executed{0}; std::atomic<bool> start{false}; std::vector<std::thread> producers;
   for(int i=0;i<4;++i) producers.emplace_back([&]{ while(!start.load()) std::this_thread::yield(); for(int j=0;j<200;++j) { auto s=p.submit({[&]{++executed;},[](Status){std::abort();}}); if(s.ok()) ++accepted; else CHECK(s.code==StatusCode::Closed || s.code==StatusCode::QueueFull); } });
   start=true; p.shutdown(); for(auto& t:producers)t.join(); CHECK(accepted==executed);
+ }
+ // A throwing failure handler is reported, never retried, and cannot kill the worker.
+ for(int round=0;round<20;++round) {
+  ThreadPool p(1,16); std::atomic<int> invoked{0},done{0};
+  CHECK(p.submit({[]{throw std::runtime_error("work");},[&](Status s){CHECK(s.code==StatusCode::InternalError); ++invoked; throw std::runtime_error("handler");}}).ok());
+  CHECK(p.submit({[]{throw 42;},[&](Status s){CHECK(s.code==StatusCode::InternalError); ++invoked; throw 7;}}).ok());
+  CHECK(p.submit({[&]{++done;},[](Status){std::abort();}}).ok());
+  p.shutdown(); CHECK(invoked==2); CHECK(done==1); CHECK(p.failureCallbackErrors()==2);
  }
 }

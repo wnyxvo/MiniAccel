@@ -31,7 +31,11 @@ Status CpuBackend::initialize() {
     catch (const std::system_error&) { return {StatusCode::BackendUnavailable,"worker creation failed"}; }
     initialized_=true; return {};
 }
-BackendCapabilities CpuBackend::capabilities() const { return {(1ull<<5)-1}; }
+BackendCapabilities CpuBackend::capabilities() const {
+    return {opcodeCapabilityBit(Opcode::Nop) | opcodeCapabilityBit(Opcode::Delay) |
+            opcodeCapabilityBit(Opcode::Fill) | opcodeCapabilityBit(Opcode::Copy) |
+            opcodeCapabilityBit(Opcode::VectorAdd)};
+}
 Result<BackendContextHandle> CpuBackend::createContext(const ContextConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || stopping_) return Status{StatusCode::Closed,"backend not available"};
@@ -85,6 +89,7 @@ Status CpuBackend::submit(BackendContextHandle ctx,const BackendCommand& cmd,Bac
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || stopping_) return {StatusCode::Closed,"backend closed"};
     auto context=contexts_.find(ctx); if(context==contexts_.end()) return {StatusCode::InvalidHandle,"invalid context"};
+    if (!capabilities().supports(cmd.opcode)) return {StatusCode::Unsupported,"unsupported opcode"};
     size_t count=0;
     switch(cmd.opcode) {
     case Opcode::Nop: if(cmd.bytes || cmd.delay_ms) return {StatusCode::InvalidArgument,"invalid nop"}; break;
@@ -129,7 +134,11 @@ Status CpuBackend::submit(BackendContextHandle ctx,const BackendCommand& cmd,Bac
             }
             complete(index,ctx,{});
         };
-        job.failure=[this,index,ctx](Status s) { complete(index,ctx,std::move(s)); };
+        // Prepare the diagnostic during admission, not in the exception path.
+        // The CPU failure handler cannot throw or lose its reserved completion.
+        job.failure=[this,index,ctx](Status status) noexcept {
+            complete(index,ctx,std::move(status));
+        };
         slot->used=true; slot->done=false; slot->completion.id=id; ++context->second.inflight; reserved=true;
         auto result=pool_->submit(std::move(job));
         if(!result.ok()) { slot->used=false; --context->second.inflight; return result; }

@@ -18,6 +18,18 @@ struct Fixture {
 };
 static void ut006() {
  Fixture f; CHECK(f.backend.capabilities().opcode_bits==31); BackendCommand c; f.run(c);
+ const Opcode ops[]={Opcode::Nop,Opcode::Delay,Opcode::Fill,Opcode::Copy,Opcode::VectorAdd};
+ for(size_t i=0;i<5;++i) {
+  CHECK(f.backend.capabilities().supports(ops[i]));
+  CHECK(opcodeCapabilityBit(ops[i])==(uint64_t{1}<<i));
+  BackendCapabilities only{opcodeCapabilityBit(ops[i])};
+  for(size_t j=0;j<5;++j) CHECK(only.supports(ops[j])==(i==j));
+ }
+ for(auto raw:{0u,6u,64u,65u,UINT32_MAX}) {
+  auto invalid=static_cast<Opcode>(raw);
+  CHECK(opcodeCapabilityBit(invalid)==0); CHECK(!f.backend.capabilities().supports(invalid));
+  CHECK(!(BackendCapabilities{UINT64_MAX}.supports(invalid)));
+ }
  c.opcode=Opcode::Delay; c.delay_ms=0; f.run(c); c.delay_ms=1000;
  BackendTaskId id=0; auto start=std::chrono::steady_clock::now(); CHECK(f.backend.submit(f.ctx,c,&id).ok()); std::vector<BackendCompletion> out; CHECK(f.backend.pollCompletions(out,0).code==StatusCode::Timeout); CHECK(f.backend.pollCompletions(out,3000).ok()); CHECK(out.size()==1 && out[0].id==id); CHECK(std::chrono::steady_clock::now()-start>=std::chrono::milliseconds(900));
  c.delay_ms=1001; id=77; CHECK(f.backend.submit(f.ctx,c,&id).code==StatusCode::InvalidArgument); CHECK(id==77);
@@ -48,7 +60,7 @@ static void ut010() {
  Fixture f; BackendTaskId id=123; BackendCommand cmd; cmd.opcode=static_cast<Opcode>(999); CHECK(f.backend.submit(f.ctx,cmd,&id).code==StatusCode::Unsupported); CHECK(id==123);
  cmd.opcode=Opcode::Fill; cmd.buffers={999}; cmd.bytes=0; CHECK(f.backend.submit(f.ctx,cmd,&id).code==StatusCode::InvalidHandle); auto other=f.backend.createContext({}).value();auto b=f.backend.allocateBuffer(other,64,64).value();cmd.buffers={b.handle}; CHECK(f.backend.submit(f.ctx,cmd,&id).code==StatusCode::WrongContext); CHECK(f.run({}).id==1); CHECK(f.backend.releaseBuffer(b.handle).ok()); CHECK(f.backend.destroyContext(other).ok());
 #ifndef NDEBUG
- CpuBackend faulty(1,4,4); CHECK(faulty.initialize().ok()); auto fault_ctx=faulty.createContext({}).value(); faulty.failNextExecutionForTest(); BackendCommand fault_cmd; CHECK(faulty.submit(fault_ctx,fault_cmd,&id).ok()); std::vector<BackendCompletion> failed; CHECK(faulty.pollCompletions(failed,3000).ok()); CHECK(failed.size()==1 && failed[0].id==id && failed[0].state==TaskState::Failed && failed[0].status.code==StatusCode::InternalError); failed.clear(); CHECK(faulty.pollCompletions(failed,0).code==StatusCode::Timeout); CHECK(faulty.submit(fault_ctx,fault_cmd,&id).ok()); CHECK(faulty.pollCompletions(failed,3000).ok()); CHECK(failed.size()==1 && failed[0].state==TaskState::Completed);
+ CpuBackend faulty(1,4,4); CHECK(faulty.initialize().ok()); auto fault_ctx=faulty.createContext({}).value(); faulty.failNextExecutionForTest(); BackendCommand fault_cmd; CHECK(faulty.submit(fault_ctx,fault_cmd,&id).ok()); std::vector<BackendCompletion> failed; CHECK(faulty.pollCompletions(failed,3000).ok()); CHECK(failed.size()==1 && failed[0].id==id && failed[0].state==TaskState::Failed && failed[0].status.code==StatusCode::InternalError); CHECK(!failed[0].status.message.empty()); failed.clear(); CHECK(faulty.pollCompletions(failed,0).code==StatusCode::Timeout); CHECK(faulty.submit(fault_ctx,fault_cmd,&id).ok()); CHECK(faulty.pollCompletions(failed,3000).ok()); CHECK(failed.size()==1 && failed[0].state==TaskState::Completed);
 #endif
  CpuBackend limited(1,4,1); CHECK(limited.initialize().ok()); auto ctx=limited.createContext({256,4}).value(); BackendCommand nop; CHECK(limited.submit(ctx,nop,&id).ok()); id=88; CHECK(limited.submit(ctx,nop,&id).code==StatusCode::QueueFull); CHECK(id==88); std::vector<BackendCompletion> v; CHECK(limited.pollCompletions(v,3000).ok()); CHECK(limited.submit(ctx,nop,&id).ok()); CHECK(id==2); limited.shutdown();
  // Fast completions are retained until consumed, with one unique ID per task.
