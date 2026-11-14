@@ -37,12 +37,17 @@ Hardware / Firmware / Virtual Accelerator
 - AMD XDNA 用于研究现代 NPU 的 Context、任务准入、Firmware 通信及 KMQ/UMQ。
 - XRT 用于研究完整 Runtime API 如何通过 SHIM 对接不同设备后端。
 
-## 3. 目录结构
+## 3. Linux DRM_ACCEL 背景
+
+[DRM_ACCEL 框架研究](./DRM_ACCEL_FRAMEWORK.md) 解释 Linux Compute Acceleration Framework 的基础、相关上游驱动，以及 MiniAccel 从 Character Driver MVP 过渡到 DRM_ACCEL 的建议路径。
+
+## 4. 目录结构
 
 ```text
 docs/research/
 ├── README.md
 ├── SOURCE_INDEX.md
+├── DRM_ACCEL_FRAMEWORK.md
 ├── ethos-u/
 │   └── README.md
 ├── amd-xdna/
@@ -54,7 +59,7 @@ docs/research/
     └── MINIACCEL_MAPPING.md
 ```
 
-## 4. 研究文档的证据等级
+## 5. 研究文档的证据等级
 
 每项研究结论应区分：
 
@@ -64,7 +69,7 @@ docs/research/
 
 不得把设计建议写成上游项目已经实现的事实；不得把不同项目中名称相似但语义不同的对象直接等同。对尚未核实的细节标记为“待核实”。
 
-## 5. 与 MiniAccel Spec 的关系
+## 6. 与 MiniAccel Spec 的关系
 
 `docs/research/` 是设计参考资料，不是规范性要求。
 
@@ -73,7 +78,7 @@ docs/research/
 - Research 与 Spec 不一致时，以当前 Spec 作为开发依据；若发现 Spec 有问题，应先提出设计变更，不得由 Codex 静默改写 Spec。
 - ADOPT、ADAPT、DEFER、REJECT 仅表示研究阶段的建议。经设计裁决并写入 Spec 后，才成为项目正式约束。
 
-## 6. 研究维护规则
+## 7. 研究维护规则
 
 1. 记录上游仓库、Commit SHA、文件路径和关键符号。
 2. 代码链接尽量使用 Commit SHA 固定链接，不只使用会移动的 main/master。
@@ -82,7 +87,7 @@ docs/research/
 5. 每个设计建议都应说明借鉴来源、MiniAccel 的简化以及与上游实现的差异。
 6. 新增研究对象时，同时更新本目录索引和对照文档。
 
-## 7. 当前研究范围边界
+## 8. 当前研究范围边界
 
 当前核心对照聚焦 Ethos-U、AMD XDNA 和 XRT。CANN、Intel NPU、ROCm/ROCR 是后续扩展阅读候选，不属于本轮三仓库源码对照的既定基线。
 
