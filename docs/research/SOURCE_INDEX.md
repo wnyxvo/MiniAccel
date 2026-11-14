@@ -18,7 +18,12 @@
 - XRT 使用固定研究提交，避免以可变分支描述此前的源码级分析。
 - 上游分支会继续移动；重新核对时应记录实际 checkout 的 SHA。
 
-## 2. Arm Ethos-U
+## 2. Linux DRM_ACCEL Framework
+
+- [Compute Acceleration Framework introduction](https://github.com/torvalds/linux/blob/97d73c8251226cf27cc6656b4c542869bb8c69fa/Documentation/accel/introduction.rst)
+- 相关驱动目录：`drivers/accel/amdxdna/`、`drivers/accel/ivpu/`、`drivers/accel/ethosu/`、`drivers/accel/qaic/`、`drivers/accel/habanalabs/`
+
+## 3. Arm Ethos-U
 
 仓库：[torvalds/linux](https://github.com/torvalds/linux)
 
@@ -37,7 +42,7 @@
 - `ethosu_job_run()`
 - `ethosu_job_handle_irq()`
 
-## 3. AMD XDNA
+## 4. AMD XDNA
 
 仓库：[amd/xdna-driver](https://github.com/amd/xdna-driver)
 
@@ -57,7 +62,7 @@
 - `src/shim/hwctx.cpp`
 - `src/shim/umq/hwctx.cpp`
 
-## 4. Xilinx XRT
+## 5. Xilinx XRT
 
 仓库：[Xilinx/XRT](https://github.com/Xilinx/XRT)
 
@@ -76,7 +81,7 @@
 
 注意：XRT 仓库中的 XOCL KDS 是 FPGA 驱动执行路径；AMD XDNA 仓库中的 `src/shim/` 是 XRT Runtime 与 XDNA NPU 的适配实现。二者有关联，但不是同一个 Kernel Driver。
 
-## 5. 复核记录模板
+## 6. 复核记录模板
 
 每次更新研究时记录：
 
