@@ -151,7 +151,7 @@ public:
 - `bytes=0` 对 Fill/Copy/VectorAdd 合法，视为成功 no-op，但所有 Handle 和 offset 仍需验证。
 - 验证 offset ≤ size 且 bytes ≤ size-offset，禁止 `offset+bytes` 溢出。
 - 不支持的操作同步返回 `Unsupported`，不创建 Task。
-- VectorAdd 仅支持 float32，可用标准 C++ 循环实现，输出逐元素误差按 TEST 文档容差验证；别名与部分重叠范围不支持，必须明确拒绝。
+- VectorAdd 仅支持 float32：`buffers=[a,b,c]`、`src_offset` 同时用于 a、b，`dst_offset` 用于 c；`bytes` 为三个 Buffer 各自访问的字节数，且必须为 4 的倍数。可用标准 C++ 循环实现，输出逐元素误差按 TEST 文档容差验证；输入/输出别名及部分重叠范围不支持，必须明确拒绝。
 - CpuBackend 的 Buffer 在 host 可直接映射；KernelBackend mmap 仅支持其 Buffer，数据操作由应用访问映射完成，不意味着 Kernel Backend 执行 FILL/COPY/VECTOR_ADD。
 
 ## 6. Stream 顺序与 Event 语义
